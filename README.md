@@ -1,2 +1,2 @@
 # BigintLua
-lua library for storing and using large integers
+lua module for storing and using large integers
