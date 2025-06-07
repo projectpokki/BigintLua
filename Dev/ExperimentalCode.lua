@@ -1,4 +1,8 @@
---multiply by fft
+--[[
+multiply by fft
+* this algorithm is only faster than implemented multiplication algorithm when input values are about 1600 digits long
+* algorithm can be made faster by using other bases so less roots of unity are needed, like base 2^16 or 2^18
+]]
 
 local function fft(p, inverseFunction)
 	local poly = table.clone(p)
