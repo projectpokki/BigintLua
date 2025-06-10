@@ -29,8 +29,8 @@
 ]]
 
 local Bigint = {}
-local libVer = "1.0-ROBLOX_LUAU"
-local libDate = "16/2/2025"
+local libVer = "1.2-ROBLOX_LUAU"
+local libDate = "10/6/2025"
 local outputMode = 1 --0 = tohex, 1 = tohexf, 2 = tointstr
 
 local function outputError(func, inputs, message)
@@ -141,11 +141,7 @@ function Bigint.new(value: number | string): {number}
 end
 
 function Bigint.clone(BigintObject: {number}): {number}
-	local output = {}
-	for i, j in ipairs(BigintObject) do
-		output[i] = j
-	end
-	return addmeta(output)
+	return addmeta(table.clone(BigintObject))
 end
 
 function Bigint.randdoubles(size: number): {number}
@@ -170,7 +166,7 @@ function Bigint.randbits(size: number): {number}
 end
 
 function Bigint.strip(BigintObject: {number}): {number}
-	local copy = Bigint.clone(BigintObject)
+	local copy = addmeta(table.clone(BigintObject))
 	for i = #copy, 1, -1 do
 		if copy[i] ~= 0 then
 			break
@@ -207,14 +203,11 @@ function Bigint.tohexf(BigintObject: {number}): string
 end
 
 function Bigint.tonumber(BigintObject: {number}): number
-	if #BigintObject > 2 then
-		return BigintObject[3] * 0x1000000000000 + BigintObject[2] * 0x1000000 + BigintObject[1]
-	elseif #BigintObject > 1 then
-		return BigintObject[2] * 0x1000000 + BigintObject[1]
-	elseif #BigintObject > 0 then
-		return BigintObject[1]
+	local sum = 0
+	for index, value in ipairs(BigintObject) do
+		sum += value * (0x1000000 ^ (index - 1))
 	end
-	return 0
+	return sum
 end
 
 function Bigint.tointstr(BigintObject: {number}): string
@@ -222,7 +215,7 @@ function Bigint.tointstr(BigintObject: {number}): string
 		return "0"
 	end
 	
-	local rem = Bigint.clone(BigintObject)
+	local rem = addmeta(table.clone(BigintObject))
 	local output = ""
 	while Bigint.greater(rem, {}) do
 		local digit = Bigint.mod(rem, {10})[1]
@@ -312,16 +305,16 @@ end
 
 function Bigint.max(a: {number}, b: {number}): {number}
 	if Bigint.greaterequal(a, b) then
-		return Bigint.clone(a)
+		return addmeta(table.clone(a))
 	end
-	return Bigint.clone(b)
+	return addmeta(table.clone(b))
 end
 
 function Bigint.min(a: {number}, b: {number}): {number}
 	if Bigint.greaterequal(a, b) then
-		return Bigint.clone(b)
+		return addmeta(table.clone(b))
 	end
-	return Bigint.clone(a)
+	return addmeta(table.clone(a))
 end
 
 --BITWISE
@@ -356,7 +349,7 @@ end
 
 function Bigint.lshiftdoubles(a: {number}, b: number): {number}
 	if b == 0 then
-		return Bigint.clone(a)
+		return addmeta(table.clone(a))
 	end
 	
 	local output = {}
@@ -371,7 +364,7 @@ end
 
 function Bigint.rshiftdoubles(a: {number}, b: number): {number}
 	if b == 0 then
-		return Bigint.clone(a)
+		return addmeta(table.clone(a))
 	end
 	
 	local output = {}
@@ -383,7 +376,7 @@ end
 
 function Bigint.lshiftbits(a: {number}, b: number): {number}
 	if b == 0 then
-		return Bigint.clone(a)
+		return addmeta(table.clone(a))
 	end
 	
 	local output = {}
@@ -406,7 +399,7 @@ end
 
 function Bigint.rshiftbits(a: {number}, b: number): {number}
 	if b == 0 then
-		return Bigint.clone(a)
+		return addmeta(table.clone(a))
 	end
 	
 	local dshifted = {}
@@ -442,21 +435,12 @@ function Bigint.lenbits(BigintObject: {number}): {number}
 	end
 	
 	local biggestDouble = BigintObject[#BigintObject]
-	return intToBigint(math.floor(math.log(biggestDouble, 2)) + 1 + 24 * (#BigintObject - 1))
-	
-	
-	--if #BigintObject == 0 then
-	--	return addmeta({})
-	--end
-	
-	--local doubleCount = (#BigintObject - 1) * 24
-	--local msd = BigintObject[#BigintObject]
-	--for i = 23, 0, -1 do
-	--	if msd >= (2 ^ i) then
-	--		return addmeta({doubleCount + msd})
-	--	end
-	--end
-	--return addmeta({doubleCount}) --input not stripped
+	local size = math.floor(math.log(biggestDouble, 2)) + 1 + 24 * (#BigintObject - 1)
+	if size > 0x1000000 then
+		return addmeta({size // 0x1000000, size % 0x1000000})
+	else
+		return addmeta({size})
+	end
 end
 
 --BASIC MATH
@@ -497,13 +481,26 @@ function Bigint.subabs(a: {number}, b: {number}): {number}
 	
 	local bigger
 	local smaller
-	if Bigint.greater(a, b) then
+	
+	local aBiggerThanB
+	if #a ~= #b then
+		aBiggerThanB = (#a > #b)
+	else
+		for i = #a, 1, -1 do
+			if a[i] ~= b[i] then
+				aBiggerThanB = (a[i] > b[i])
+				break
+			end
+		end
+	end
+	
+	if aBiggerThanB then
 		bigger, smaller = a, b
 	else
 		bigger, smaller = b, a
 	end
 	
-	for i = 1, #b do
+	for i = 1, #smaller do
 		if bigger[i] < smaller[i] + carry then
 			table.insert(output, bigger[i] - smaller[i] - carry + 0x1000000)
 			carry = 1
@@ -554,16 +551,28 @@ function Bigint.sub(a: {number}, b: {number}): {number}
 	return Bigint.strip(output)
 end
 
-function Bigint.mul(a: {number}, b: {number}): {number} --REPLACE WITH KARATSUBA
-	local output = {}
-	for n = 2, #a + #b do
-		local coeff = {}
-		for i = math.max(1, n - #b), math.min(n - 1, #a) do
-			coeff = Bigint.add(coeff, intToBigint(a[i] * b[n - i]))
+function Bigint.mul(a: {number}, b: {number}): {number}
+	local long = (#a > #b and a) or b
+	local short = (#a > #b and b) or a
+
+	local out = {}
+	local carry = 0
+	for digit = 1, #short + #long - 1 do
+		local digitTotal = carry
+		carry = 0
+		for index = math.max(1, digit-#short+1), math.min(digit, #long) do
+			digitTotal += short[digit - index + 1] * long[index]
+			if digitTotal >= 0x1000000 then
+				carry += digitTotal // 0x1000000
+				digitTotal %= 0x1000000
+			end
 		end
-		output = Bigint.add(output, Bigint.lshiftdoubles(coeff, n - 2))
+		out[digit] = digitTotal
 	end
-	return addmeta(output)
+	if carry > 0 then
+		out[#out + 1] = carry
+	end
+	return addmeta(out)
 end
 
 function Bigint.idiv(a: {number}, b: {number}): {number}
@@ -571,7 +580,7 @@ function Bigint.idiv(a: {number}, b: {number}): {number}
 		outputError("idiv", {Bigint.tohexf(a), Bigint.tohexf(b)}, "division by 0")
 	end	
 	
-	local rem = Bigint.clone(a)
+	local rem = addmeta(table.clone(a))
 	local output = {}
 	
 	for ind = Bigint.tonumber(Bigint.sub(Bigint.lenbits(a), Bigint.lenbits(b))), 0, -1 do
@@ -588,21 +597,29 @@ function Bigint.fdiv(a: {number}, b: {number}): number
 	if #b == 0 then
 		outputError("fdiv", {Bigint.tohexf(a), Bigint.tohexf(b)}, "division by 0")
 	end
-	
-	local lenA = Bigint.tonumber(Bigint.lenbits(a))
-	local lenB = Bigint.tonumber(Bigint.lenbits(b))
-	
-	if lenA - lenB > 72 then
-		return math.huge
-	elseif lenB - lenA > 72 then
-		return 0
+
+	local rem = addmeta(table.clone(a))
+	local intPart = 0
+
+	for ind = Bigint.tonumber(Bigint.sub(Bigint.lenbits(a), Bigint.lenbits(b))), 0, -1 do
+		local shiftedDenom = Bigint.lshiftbits(b, ind)
+		if Bigint.greaterequal(rem, shiftedDenom) then
+			rem = Bigint.sub(rem, shiftedDenom)
+			intPart = intPart + 2 ^ ind
+		end
 	end
 	
-	local maxBits = math.max(lenA, lenB)
-	local shiftAmount = maxBits - 72
-	local shiftedA = Bigint.tonumber(Bigint.rshiftbits(a, shiftAmount))
-	local shiftedB = Bigint.tonumber(Bigint.rshiftbits(b, shiftAmount))
-	return shiftedA / shiftedB
+	local amodb = addmeta(table.clone(a))
+	for i = Bigint.tonumber(Bigint.sub(Bigint.lenbits(a), Bigint.lenbits(b))), 0, -1 do
+		if Bigint.greaterequal(amodb, Bigint.lshiftbits(b, i)) then
+			amodb = Bigint.sub(amodb, Bigint.lshiftbits(b, i))
+		end
+	end
+	
+	local fracPartDenom = Bigint.rshiftdoubles(b, #b - 2)
+	local fracPartNumer = Bigint.rshiftdoubles(amodb, #b - 2)
+	
+	return intPart + Bigint.tonumber(fracPartNumer) / Bigint.tonumber(fracPartDenom)
 end
 
 function Bigint.mod(a: {number}, b: {number}): {number}
@@ -610,7 +627,7 @@ function Bigint.mod(a: {number}, b: {number}): {number}
 		outputError("mod", {Bigint.tohexf(a), Bigint.tohexf(b)}, "modulo by 0")
 	end
 	
-	local rem = Bigint.clone(a)
+	local rem = addmeta(table.clone(a))
 	for i = Bigint.tonumber(Bigint.sub(Bigint.lenbits(a), Bigint.lenbits(b))), 0, -1 do
 		if Bigint.greaterequal(rem, Bigint.lshiftbits(b, i)) then
 			rem = Bigint.sub(rem, Bigint.lshiftbits(b, i))
@@ -638,8 +655,8 @@ function Bigint.gcd(a: {number}, b: {number}): {number}
 		outputError("gcd", {Bigint.tohexf(a), Bigint.tohexf(b)}, "domain error")
 	end
 	
-	local val1 = Bigint.clone(a)
-	local val2 = Bigint.clone(b)
+	local val1 = addmeta(table.clone(a))
+	local val2 = addmeta(table.clone(b))
 	
 	while true do
 		if Bigint.greater(val1, val2) then
@@ -673,9 +690,9 @@ function Bigint.pow(a: {number}, b: {number}): {number}
 		return addmeta({})
 	end
 
-	local remexp = Bigint.clone(b)
+	local remexp = addmeta(table.clone(b))
 	local output = {1}
-	local base = Bigint.clone(a)
+	local base = addmeta(table.clone(a))
 	while #remexp > 0 do
 		if remexp[1] % 2 == 1 then
 			output = Bigint.mul(output, base)
@@ -697,7 +714,7 @@ function Bigint.powmod(base: {number}, exp: {number}, m: {number}): {number}
 		return addmeta({})
 	end
 	
-	local remexp = Bigint.clone(exp)
+	local remexp = addmeta(table.clone(exp))
 	local output = {1}
 	local bmod = Bigint.mod(base, m)
 	while #remexp > 0 do
@@ -736,7 +753,7 @@ function Bigint.root(a: {number}, b: {number}): {number}
 	elseif #a == 0 then
 		return addmeta({})
 	elseif #b == 1 and b[1] == 1 then
-		return Bigint.clone(a)
+		return addmeta(table.clone(a))
 	end
 	
 	local upper = Bigint.lshiftbits({1}, Bigint.tonumber(Bigint.idiv(Bigint.sub(Bigint.add(Bigint.lenbits(a), b), {1}), b)))
@@ -762,23 +779,23 @@ function Bigint.log2(BigintObject: {number}): {number}
 	return Bigint.sub(Bigint.lenbits(BigintObject), {1})
 end
 
-function Bigint.log(a: {number}, b: {number}): {number}
-	if #a == 0 or #b == 0 or (#b == 1 and b[1] == 1) then
-		outputError("log", {Bigint.tohexf(a), Bigint.tohexf(b)}, "domain error")
-	elseif Bigint.less(a, b) then
+function Bigint.log(arg: {number}, base: {number}): {number}
+	if #arg == 0 or #base == 0 or (#base == 1 and base[1] == 1) then
+		outputError("log", {Bigint.tohexf(arg), Bigint.tohexf(base)}, "domain error")
+	elseif Bigint.less(arg, base) then
 		return addmeta({})
-	elseif Bigint.equal(a, b) then
+	elseif Bigint.equal(arg, base) then
 		return addmeta({1})
 	end
 
-	local lower = Bigint.idiv(Bigint.sub(Bigint.lenbits(a), {1}), Bigint.lenbits(b))
-	local upper = Bigint.add(Bigint.idiv(Bigint.lenbits(a), Bigint.sub(Bigint.lenbits(b), {1})), {1})
+	local lower = Bigint.idiv(Bigint.sub(Bigint.lenbits(arg), {1}), Bigint.lenbits(base))
+	local upper = Bigint.add(Bigint.idiv(Bigint.lenbits(arg), Bigint.sub(Bigint.lenbits(base), {1})), {1})
 	while Bigint.greater(Bigint.sub(upper, lower), {1}) do
 		local guess = Bigint.rshiftbits(Bigint.add(upper, lower), 1)
-		local bPow = Bigint.pow(b, guess)
-		if Bigint.equal(bPow, a) then
+		local bPow = Bigint.pow(base, guess)
+		if Bigint.equal(bPow, arg) then
 			return guess
-		elseif Bigint.less(bPow, a) then
+		elseif Bigint.less(bPow, arg) then
 			lower = guess
 		else
 			upper = guess
@@ -810,7 +827,24 @@ function Bigint.nCr(n: {number}, r: {number}): {number}
 	if Bigint.less(n, r) then
 		return addmeta({})
 	end
-	return Bigint.idiv(Bigint.nPr(n, r), Bigint.fact(r))
+	
+	local rCopy
+	local rFlip
+	if Bigint.greater(Bigint.rshiftbits(n, 1), r) then
+		rCopy = r
+		rFlip = Bigint.sub(n, r)
+	else
+		rCopy = Bigint.sub(n, r)
+		rFlip = r
+	end
+	
+	local ans = {1}
+	for i = 1, Bigint.tonumber(rCopy) do
+		local bigintI = intToBigint(i)
+		ans = Bigint.mul(ans, (Bigint.add(rFlip, bigintI)))
+		ans = Bigint.idiv(ans, bigintI)
+	end
+	return ans
 end
 
 return Bigint
